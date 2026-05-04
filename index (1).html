@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Bharat Rakshak: 1945 Mahayuddh Pro</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        * { box-sizing: border-box; touch-action: manipulation; }
+        body {
+            margin: 0; padding: 0; background-color: #000; color: #0f0;
+            font-family: 'Press Start 2P', monospace; overflow: hidden;
+            display: flex; flex-direction: column; height: 100vh;
+        }
+        /* --- CRT ARCADE SCANLINES --- */
+        body::after {
+            content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+            background-size: 100% 3px, 3px 100%; z-index: 1000; pointer-events: none;
+        }
+        /* --- HUD --- */
+        #hud {
+            background-color: #000; border-bottom: 3px solid #ff9933; 
+            padding: 8px; display: grid; grid-template-columns: 1.2fr 1fr;
+            font-size: 5px; z-index: 100; gap: 5px;
+        }
+        .stat-box { display: flex; flex-direction: column; gap: 4px; }
+        .text-gold { color: #ffd700; }
+        .text-red { color: #f44; }
+        
+        /* --- GAME AREA --- */
+        #game-area {
+            flex: 1; position: relative; width: 100%;
+            background-color: #0d1a0d; 
+            background-image: linear-gradient(#1a2a1a 1px, transparent 1px), linear-gradient(90deg, #1a2a1a 1px, transparent 1px);
+            background-size: 40px 40px; overflow: hidden;
+        }
+        canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+        /* --- OVERLAYS --- */
+        #event-banner {
+            position: absolute; top: 15%; left: 50%; transform: translateX(-50%);
+            background: #900; color: #fff; padding: 10px; border: 2px solid #fff;
+            z-index: 500; font-size: 6px; display: none; text-align: center;
+        }
+        #pilot-ui {
+            position: absolute; bottom: 85px; left: -300px;
+            width: 180px; background: rgba(20, 20, 20, 0.95);
+            border: 2px solid #0f0; padding: 10px; z-index: 95;
+            transition: 0.5s; box-shadow: 4px 4px 0 #000;
+        }
+        #boss-ui {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            width: 70%; background: #000; border: 2px solid #f00; padding: 4px;
+            display: none; flex-direction: column; align-items: center; z-index: 500;
+        }
+        #death-screen {
+            display: none; position: absolute; inset: 0;
+            background: rgba(0,0,0,0.98); z-index: 800;
+            flex-direction: column; align-items: center; justify-content: center; color: #fff;
+        }
+
+        /* --- CONTROLS --- */
+        #controls {
+            background-color: #111; border-top: 4px solid #138808; 
+            padding: 10px; display: flex; gap: 10px; overflow-x: auto;
+        }
+        #controls::-webkit-scrollbar { display: none; }
+        .btn {
+            background-color: #222; border: 2px solid #555;
+            color: #fff; font-family: 'Press Start 2P', monospace;
+            font-size: 4px; padding: 12px; min-width: 145px;
+            flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; cursor: pointer;
+        }
+        .btn:active { transform: scale(0.95); }
+        .btn.active { border-color: #0f0; background: #0a200a; }
+        .btn.locked { color: #444; background: #111; border-style: dashed; }
+        .price { color: #ffd700; font-size: 6px; }
+
+        #ticker { background: #000; color: #ffd700; font-size: 5px; padding: 5px; overflow: hidden; border-top: 1px solid #333; }
+        #ticker-text { display: inline-block; white-space: nowrap; animation: scroll-news 40s linear infinite; }
+        @keyframes scroll-news { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+    </style>
+</head>
+<body>
+
+    <div id="hud">
+        <div class="stat-box">
+            <span id="rank-ui" style="color:#0ff; font-size:6px;">RANK: LIEUTENANT</span>
+            <span style="color:#f93;">WAVE: <span id="wave-val">1</span> | DAY: <span id="day-val">1</span></span>
+            <span id="cash-ui" class="text-gold">FUNDS: ₹<span id="cash-val">1200</span></span>
+        </div>
+        <div class="stat-box">
+            <span id="power-ui" style="color:#44f;">POWER: <span id="power-val">0/100</span></span>
+            <span class="text-red">HP: <span id="hp-val">100%</span> | POP: <span id="pop-val">1000</span></span>
+            <span style="color:#f6b;">STAB: <span id="stab-val">100%</span></span>
+        </div>
+    </div>
+
+    <div id="game-area">
+        <div id="event-banner">🚨 STOCK MARKET CRASH! 🚨</div>
+        <div id="boss-ui">
+            <span style="color:red; font-size:5px;">BOSS: 1945 FORTRESS</span>
+            <div style="width:100%; background:#300; height:6px; margin-top:2px; border:1px solid #fff;">
+                <div id="boss-hp-fill" style="width:100%; background:#f00; height:100%;"></div>
+            </div>
+        </div>
+        <div id="pilot-ui">
+            <canvas id="p-face" width="64" height="64"></canvas>
+            <div id="pilot-msg" style="font-size:5px; color:#0f0; margin-top:5px; line-height:1.2;">UNIT 0.2 READY.</div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="death-screen">
+            <h1 style="color:#f00; font-size:16px;">DELHI FALLEN</h1>
+            <button onclick="location.reload()" style="background:#138808; color:#fff; border:none; padding:15px; font-family:'Press Start 2P';">RE-DEPLOY</button>
+        </div>
+    </div>
+
+    <div id="ticker"><span id="ticker-text">NEWS: BORDER SECURITY ALERT... NEW DEFENSE BUDGET APPROVED... DRDO TESTING HYPERSONIC MISSILES...</span></div>
+
+    <div id="controls">
+        <button class="btn" style="border-color:#44f" onclick="tejasStrike()">TEJAS STRIKE</button>
+        <button class="btn" id="btn-factory" onclick="setBuild('factory')">FACTORY<span class="price">₹300</span></button>
+        <button class="btn" id="btn-radar" onclick="setBuild('radar')">RADAR<span class="price">₹400</span></button>
+        <button class="btn" id="btn-ciws" onclick="setBuild('ciws')">SUDERSHAN<span class="price">₹500</span></button>
+        <button class="btn" id="btn-akash" onclick="setBuild('akash')">AKASH SAM<span class="price">₹600</span></button>
+        <button class="btn locked" id="btn-mrsam" onclick="reqAlert(2)">RANK 2 REQ</button>
+        <button class="btn locked" id="btn-s400" onclick="reqAlert(3)">RANK 3 REQ</button>
+        <button class="btn locked" id="btn-agniv" onclick="reqAlert(6)">RANK 6 REQ</button>
+        <button class="btn" onclick="fireBrahmos()" style="border-color:#f0f">BRAHMOS<span class="price">₹3000</span></button>
+        <button class="btn" onclick="saveGameProg()" style="border-color:#fff">SAVE GAME</button>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const pCtx = document.getElementById('p-face').getContext('2d');
+
+const UNIT_STATS = {
+    'factory': { price: 300, power: -100, maint: 0, range: 0, ammo: 0 },
+    'radar': { price: 400, power: 40, maint: 5, range: 140, ammo: 0 },
+    'ciws': { price: 500, power: 30, maint: 4, range: 110, ammo: 60 },
+    'akash': { price: 600, power: 45, maint: 8, range: 180, ammo: 15 },
+    'mrsam': { price: 1200, power: 80, maint: 20, range: 250, ammo: 20 },
+    's400': { price: 3000, power: 200, maint: 60, range: 400, ammo: 40 },
+    'agniv': { price: 8000, power: 500, maint: 150, range: 800, ammo: 1 }
+};
+
+// --- GAME STATE ---
+let cash = 1200, hp = 100, pop = 1000, stab = 100, xp = 0, lv = 1, day = 1, wave = 1;
+let tPow = 100, uPow = 0, mCost = 0, special = 0, frame = 0, buildMode = null;
+let factories = [], bases = [], enemies = [], missiles = [], particles = [], shake = 0;
+let bossActive = false, bossHP = 1000, bossMax = 1000, bossX = -150;
+const ranks = ["LIEUTENANT", "CAPTAIN", "MAJOR", "COLONEL", "BRIGADIER", "GENERAL", "MARSHAL"];
+
+// --- SOUND ENGINE (Retro Beeps) ---
+function playSound(freq, type, dur) {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + dur);
+}
+
+// --- PIXEL DRAWING ---
+function drawPilot(c) {
+    c.clearRect(0,0,64,64); 
+    c.fillStyle = "#222"; c.fillRect(10,10,44,44); // Helmet
+    c.fillStyle = "#0f0"; c.fillRect(15,20,34,15); // Visor
+    c.fillStyle = "#fff"; c.fillRect(25,45,14,5);  // Mic
+}
+
+function drawCity() {
+    let cx = canvas.width/2, cy = canvas.height/2;
+    // Base Plate
+    ctx.fillStyle = "#222"; ctx.fillRect(cx-40, cy-40, 80, 80);
+    // Ashoka Chakra area
+    ctx.fillStyle = "#fff"; ctx.fillRect(cx-35, cy-15, 70, 30);
+    ctx.fillStyle = "#ff9933"; ctx.fillRect(cx-35, cy-35, 70, 20);
+    ctx.fillStyle = "#138808"; ctx.fillRect(cx-35, cy+15, 70, 20);
+    // Core Pulse
+    ctx.fillStyle = (frame%20<10) ? "#00f" : "#0ff";
+    ctx.fillRect(cx-5, cy-5, 10, 10);
+}
+
+function drawUnit(b) {
+    ctx.save(); ctx.translate(b.x, b.y);
+    let rel = b.reloading;
+    ctx.fillStyle = rel ? "#333" : "#555";
+    
+    if(b.type==='factory'){
+        ctx.fillStyle="#b80"; ctx.fillRect(-15,-10,30,20);
+        ctx.fillStyle="#840"; ctx.fillRect(5,-25,8,18);
+    } else if(b.type==='radar'){
+        ctx.fillStyle="#444"; ctx.fillRect(-10,0,20,10);
+        ctx.strokeStyle="#0f0"; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(0,-10, 15, Math.PI, 0); ctx.stroke();
+    } else {
+        // Weapon Platform
+        ctx.fillStyle="#333"; ctx.fillRect(-15,0,30,12);
+        ctx.fillStyle="#666"; ctx.fillRect(-5,-8,10,10);
+        if(!rel) { ctx.fillStyle="#0f0"; ctx.fillRect(-2,-15,4,8); }
+    }
+    // Ammo Bar
+    if(b.maxAmmo > 0) {
+        ctx.fillStyle="#000"; ctx.fillRect(-15, 15, 30, 4);
+        ctx.fillStyle=rel?"#f00":"#ff0";
+        ctx.fillRect(-15, 15, (b.ammo/b.maxAmmo)*30, 4);
+    }
+    ctx.restore();
+}
+
+// --- PARTICLES ---
+function spawnExplosion(x, y, color, count) {
+    for(let i=0; i<count; i++) {
+        particles.push({
+            x, y, 
+            vx: (Math.random()-0.5)*10, 
+            vy: (Math.random()-0.5)*10, 
+            life: 30, 
+            col: color
+        });
+    }
+}
+
+// --- GAME LOGIC ---
+function setBuild(t) { 
+    buildMode=t; 
+    document.querySelectorAll('.btn').forEach(b=>b.classList.remove('active')); 
+    if(t) document.getElementById('btn-'+t).classList.add('active');
+    playSound(440, 'sine', 0.1);
+}
+
+function reqAlert(r) { 
+    if(lv>=r) { pilotTalk("WEAPON UNLOCKED!"); } 
+    else { pilotTalk(`RANK ${ranks[r-1]} REQUIRED!`); playSound(150, 'sawtooth', 0.3); } 
+}
+
+function pilotTalk(m) { 
+    const ui = document.getElementById('pilot-ui'); 
+    document.getElementById('pilot-msg').innerText = "HQ:\n"+m; 
+    ui.style.left="15px"; 
+    setTimeout(()=>{ ui.style.left="-300px"; }, 3500); 
+}
+
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault(); if(!buildMode) return;
+    const rect = canvas.getBoundingClientRect(); 
+    const x = e.touches[0].clientX - rect.left;
+    const y = e.touches[0].clientY - rect.top;
+    
+    if(Math.hypot(canvas.width/2-x, canvas.height/2-y) < 70) return;
+    
+    const d = UNIT_STATS[buildMode];
+    if(cash>=d.price) {
+        cash-=d.price;
+        if(buildMode==='factory') factories.push({x,y});
+        else bases.push({x,y,type:buildMode, range:d.range, ammo:d.ammo, maxAmmo:d.ammo, cooldown:0, reloading:false});
+        uPow+=d.power; mCost+=d.maint;
+        spawnExplosion(x, y, "#0f0", 10);
+        setBuild(null); updateHUD();
+        playSound(880, 'square', 0.1);
+    }
+});
+
+function animate() {
+    if(hp<=0) { document.getElementById('death-screen').style.display='flex'; return; }
+    requestAnimationFrame(animate); frame++;
+    canvas.width = window.innerWidth; canvas.height = document.getElementById('game-area').clientHeight;
+    
+    ctx.save();
+    if(shake > 0) { ctx.translate((Math.random()-0.5)*10, (Math.random()-0.5)*10); shake--; }
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    
+    drawCity();
+    factories.forEach(f => drawUnit({...f, type:'factory'}));
+    bases.forEach(b => drawUnit(b));
+
+    // Enemies Logic
+    if(frame % Math.max(20, 120-wave*5) === 0) {
+        enemies.push({x: Math.random()*canvas.width, y: -20, s: 1.5+wave*0.1, h: 20+wave*5});
+    }
+
+    enemies.forEach((e, i) => {
+        ctx.fillStyle = "#f33"; ctx.fillRect(e.x-8, e.y-8, 16, 16); // Pixel Tank
+        ctx.fillStyle = "#900"; ctx.fillRect(e.x-4, e.y-12, 8, 4);  // Turret
+        
+        let ang = Math.atan2(canvas.height/2-e.y, canvas.width/2-e.x);
+        e.x += Math.cos(ang)*e.s; e.y += Math.sin(ang)*e.s;
+
+        if(Math.hypot(e.x-canvas.width/2, e.y-canvas.height/2) < 45) {
+            hp-=5; spawnExplosion(e.x, e.y, "#f00", 15);
+            enemies.splice(i,1); shake = 20; playSound(100, 'sawtooth', 0.4);
+            updateHUD();
+        }
+    });
+
+    // Missiles
+    missiles.forEach((m, i) => {
+        ctx.fillStyle = "#fff"; ctx.fillRect(m.x, m.y, 4, 4);
+        let ang = Math.atan2(m.target.y-m.y, m.target.x-m.x);
+        m.x += Math.cos(ang)*12; m.y += Math.sin(ang)*12;
+
+        if(Math.hypot(m.x-m.target.x, m.y-m.target.y) < 15) {
+            m.target.h -= 25;
+            spawnExplosion(m.x, m.y, "#ff0", 8);
+            if(m.target.h <= 0) {
+                enemies = enemies.filter(en => en !== m.target);
+                cash += 50; xp += 20; updateHUD();
+            }
+            missiles.splice(i,1);
+            playSound(1200, 'sine', 0.05);
+        }
+    });
+
+    // Bases Fire
+    bases.forEach(b => {
+        if(b.type==='radar' || b.type==='factory') return;
+        if(b.reloading) {
+            b.cooldown++; if(b.cooldown > 180) { b.ammo = b.maxAmmo; b.reloading = false; b.cooldown=0; }
+        } else {
+            if(b.cooldown > 0) b.cooldown--;
+            else {
+                let target = enemies.find(e => Math.hypot(e.x-b.x, e.y-b.y) < b.range);
+                if(target && b.ammo > 0) {
+                    missiles.push({x:b.x, y:b.y, target});
+                    b.ammo--; b.cooldown = 40;
+                    if(b.ammo <= 0) b.reloading = true;
+                }
+            }
+        }
+    });
+
+    // Particles
+    particles.forEach((p, i) => {
+        p.x += p.vx; p.y += p.vy; p.life--;
+        ctx.fillStyle = p.col; ctx.globalAlpha = p.life/30;
+        ctx.fillRect(p.x, p.y, 3, 3);
+        if(p.life <= 0) particles.splice(i,1);
+    });
+    ctx.globalAlpha = 1;
+    ctx.restore();
+}
+
+function updateHUD() {
+    document.getElementById('cash-val').innerText = Math.floor(cash);
+    document.getElementById('hp-val').innerText = hp + '%';
+    document.getElementById('wave-val').innerText = wave;
+    document.getElementById('power-val').innerText = `${uPow}/${tPow}`;
+    document.getElementById('rank-ui').innerText = "RANK: " + (ranks[lv-1] || "MARSHAL");
+    if(xp >= lv*500) { lv++; xp=0; pilotTalk("PROMOTED! NEW TECH UNLOCKED."); unlock(); }
+}
+
+function unlock() {
+    const ids = ['mrsam', 's400', 'agniv'];
+    ids.forEach(id => {
+        let btn = document.getElementById('btn-'+id);
+        if(btn && lv >= (id==='mrsam'?2 : id==='s400'?3 : 6)) {
+            btn.classList.remove('locked');
+            btn.innerHTML = `${id.toUpperCase()}<span class="price">₹${UNIT_STATS[id].price}</span>`;
+            btn.onclick = () => setBuild(id);
+        }
+    });
+}
+
+function saveGameProg() {
+    const data = { cash, lv, xp, wave };
+    localStorage.setItem('bharat_rakshak_save', JSON.stringify(data));
+    pilotTalk("PROGRESS SAVED!");
+}
+
+function loadGame() {
+    const saved = localStorage.getItem('bharat_rakshak_save');
+    if(saved) {
+        const d = JSON.parse(saved);
+        cash = d.cash; lv = d.lv; xp = d.xp; wave = d.wave;
+        updateHUD(); unlock();
+    }
+}
+
+setInterval(() => {
+    cash += (20 + factories.length*40 - mCost) * (stab/100);
+    if(frame % 3600 === 0) { day++; wave++; }
+    updateHUD();
+}, 1000);
+
+function tejasStrike(){ 
+    if(cash >= 1000){ 
+        cash -= 1000; enemies = []; shake = 50; 
+        spawnExplosion(canvas.width/2, canvas.height/2, "#fff", 100);
+        pilotTalk("TEJAS SQUADRON DEPLOYED!"); playSound(50, 'sawtooth', 1);
+    } 
+}
+function fireBrahmos(){ 
+    if(cash >= 3000){ 
+        cash -= 3000; enemies = []; shake = 100; 
+        pilotTalk("BRAHMOS IMPACT!"); playSound(40, 'sine', 1.5);
+    } 
+}
+
+window.onload = () => { drawPilot(pCtx); loadGame(); animate(); };
+</script>
+</body>
+</html>
